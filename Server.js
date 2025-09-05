@@ -1,5 +1,5 @@
 // server.js
-require("dotenv").config()
+require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -9,19 +9,20 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
+
+// Socket.IO with CORS enabled
 const io = new Server(server, { cors: { origin: "*" } });
 
-// Middlewares
+// ---------------- Middleware ----------------
 app.use(cors());
 app.use(express.json());
 
-// MongoDB connection
+// ---------------- MongoDB Connection ----------------
+const MONGO_URL = process.env.MONGO_URL || "mongodb://localhost:27017/miniMALL";
 mongoose
-  .connect(
-    "mongodb+srv://happyclub369108:PJYKlE3sAPjRahOl@cluster0.x6ooz8n.mongodb.net/miniMALL?retryWrites=true&w=majority"
-  )
+  .connect(MONGO_URL)
   .then(() => console.log("MongoDB Connected"))
-  .catch((err) => console.log(err));
+  .catch((err) => console.log("MongoDB Error:", err));
 
 // ---------------- Schemas ----------------
 const userSchema = new mongoose.Schema({
@@ -49,6 +50,9 @@ const Message = mongoose.model("Message", messageSchema);
 app.post("/signup", async (req, res) => {
   try {
     const { name, number, password } = req.body;
+    if (!name || !number || !password)
+      return res.status(400).json({ message: "All fields required" });
+
     const exist = await User.findOne({ number });
     if (exist) return res.status(400).json({ message: "Number already exists" });
 
@@ -56,6 +60,7 @@ app.post("/signup", async (req, res) => {
     const newUser = await new User({ name, number, password: hash }).save();
     res.json({ userId: newUser._id });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -67,11 +72,12 @@ app.post("/login", async (req, res) => {
     const user = await User.findOne({ number });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const compare = await bcrypt.compare(password, user.password);
-    if (!compare) return res.status(400).json({ message: "Wrong password" });
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(400).json({ message: "Wrong password" });
 
     res.json({ userId: user._id });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -79,11 +85,11 @@ app.post("/login", async (req, res) => {
 // Get profile
 app.get("/profile/:userId", async (req, res) => {
   try {
-    const { userId } = req.params;
-    const user = await User.findById(userId).select("-password");
+    const user = await User.findById(req.params.userId).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (err) {
+    console.error(err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -91,42 +97,68 @@ app.get("/profile/:userId", async (req, res) => {
 // Search contacts
 app.get("/search/:userId/:query", async (req, res) => {
   const { userId, query } = req.params;
-  const user = await User.findById(userId);
-  const contacts = await User.find({
-    _id: { $ne: userId, $nin: user.contacts },
-    number: { $regex: query, $options: "i" },
-  });
-  res.json(contacts);
+  try {
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const contacts = await User.find({
+      _id: { $ne: userId, $nin: user.contacts },
+      number: { $regex: query, $options: "i" },
+    });
+    res.json(contacts);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 // Add friend
 app.post("/friends/:userId/:friendId", async (req, res) => {
   const { userId, friendId } = req.params;
-  const user = await User.findById(userId);
-  if (!user.contacts.includes(friendId)) {
-    user.contacts.push(friendId);
-    await user.save();
+  try {
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user.contacts.includes(friendId)) {
+      user.contacts.push(friendId);
+      await user.save();
+    }
+    res.json({ message: "Friend added" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
-  res.json({ message: "Friend added" });
 });
 
 // Get contacts
 app.get("/contacts/:userId", async (req, res) => {
-  const { userId } = req.params;
-  const user = await User.findById(userId).populate("contacts", "name avatar number");
-  res.json(user.contacts);
+  try {
+    const user = await User.findById(req.params.userId).populate(
+      "contacts",
+      "name avatar number"
+    );
+    res.json(user.contacts);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 // Get messages
 app.get("/messages/:userId/:contactId", async (req, res) => {
-  const { userId, contactId } = req.params;
-  const messages = await Message.find({
-    $or: [
-      { sender: userId, receiver: contactId },
-      { sender: contactId, receiver: userId },
-    ],
-  }).sort({ createdAt: 1 });
-  res.json(messages);
+  try {
+    const { userId, contactId } = req.params;
+    const messages = await Message.find({
+      $or: [
+        { sender: userId, receiver: contactId },
+        { sender: contactId, receiver: userId },
+      ],
+    }).sort({ createdAt: 1 });
+    res.json(messages);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 // ---------------- Socket.IO ----------------
@@ -135,13 +167,11 @@ const onlineUsers = new Map();
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  // Join user
   socket.on("join", (userId) => {
     onlineUsers.set(userId, socket.id);
     console.log(`User ${userId} joined. Online users:`, [...onlineUsers.keys()]);
   });
 
-  // Send message
   socket.on("sendMessage", async ({ senderId, receiverId, text }) => {
     try {
       const message = await new Message({ sender: senderId, receiver: receiverId, text }).save();
@@ -166,58 +196,48 @@ io.on("connection", (socket) => {
         createdAt: message.createdAt,
       });
     } catch (err) {
-      console.log("Message send error:", err);
+      console.error("Message send error:", err);
     }
   });
 
-  // Call user
   socket.on("callUser", ({ to, from, signalData, name, callType }) => {
     const calleeSocket = onlineUsers.get(to);
     if (calleeSocket) {
       io.to(calleeSocket).emit("incomingCall", { from, signalData, name, callType, online: true });
     } else {
       const callerSocket = onlineUsers.get(from);
-      if (callerSocket) {
-        io.to(callerSocket).emit("calleeOffline", { to, name, callType });
-      }
+      if (callerSocket) io.to(callerSocket).emit("calleeOffline", { to, name, callType });
     }
   });
 
-  // Accept call
   socket.on("answerCall", ({ to, signalData }) => {
     const callerSocket = onlineUsers.get(to);
     if (callerSocket) io.to(callerSocket).emit("callAccepted", { signalData });
   });
 
-  // Reject call
   socket.on("rejectCall", ({ to }) => {
     const callerSocket = onlineUsers.get(to);
     if (callerSocket) io.to(callerSocket).emit("callEnded", { reason: "Call rejected" });
   });
 
-  // ICE candidate
   socket.on("iceCandidate", ({ to, candidate }) => {
     const targetSocket = onlineUsers.get(to);
     if (targetSocket) io.to(targetSocket).emit("iceCandidate", candidate);
   });
 
-  // End call
   socket.on("endCall", ({ to }) => {
     const targetSocket = onlineUsers.get(to);
     if (targetSocket) io.to(targetSocket).emit("callEnded");
   });
 
-  // Disconnect
   socket.on("disconnect", () => {
     for (const [userId, sockId] of onlineUsers.entries()) {
-      if (sockId === socket.id) {
-        onlineUsers.delete(userId);
-        break;
-      }
+      if (sockId === socket.id) onlineUsers.delete(userId);
     }
     console.log("Socket disconnected:", socket.id);
   });
 });
 
 // ---------------- Start Server ----------------
-server.listen(5000, () => console.log("Server running on port 5000"));
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
