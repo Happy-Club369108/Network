@@ -162,16 +162,22 @@ app.get("/messages/:userId/:contactId", async (req, res) => {
 });
 
 // ---------------- Socket.IO ----------------
+// ---------------- Socket.IO ----------------
 const onlineUsers = new Map();
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
+  // Join user
   socket.on("join", (userId) => {
     onlineUsers.set(userId, socket.id);
     console.log(`User ${userId} joined. Online users:`, [...onlineUsers.keys()]);
+    
+    // Send current online users to the newly connected user
+    socket.emit("onlineUsers", [...onlineUsers.keys()]);
   });
 
+  // Send message
   socket.on("sendMessage", async ({ senderId, receiverId, text }) => {
     try {
       const message = await new Message({ sender: senderId, receiver: receiverId, text }).save();
@@ -196,48 +202,75 @@ io.on("connection", (socket) => {
         createdAt: message.createdAt,
       });
     } catch (err) {
-      console.error("Message send error:", err);
+      console.log("Message send error:", err);
     }
   });
 
+  // Call user
   socket.on("callUser", ({ to, from, signalData, name, callType }) => {
     const calleeSocket = onlineUsers.get(to);
     if (calleeSocket) {
-      io.to(calleeSocket).emit("incomingCall", { from, signalData, name, callType, online: true });
+      io.to(calleeSocket).emit("incomingCall", { 
+        from, 
+        signalData, 
+        name, 
+        callType, 
+        online: true 
+      });
     } else {
-      const callerSocket = onlineUsers.get(from);
-      if (callerSocket) io.to(callerSocket).emit("calleeOffline", { to, name, callType });
+      // Notify caller that callee is offline
+      socket.emit("calleeOffline", { to, name, callType });
     }
   });
 
+  // Answer call
   socket.on("answerCall", ({ to, signalData }) => {
     const callerSocket = onlineUsers.get(to);
-    if (callerSocket) io.to(callerSocket).emit("callAccepted", { signalData });
+    if (callerSocket) {
+      io.to(callerSocket).emit("callAccepted", { signalData });
+    }
   });
 
+  // Reject call
   socket.on("rejectCall", ({ to }) => {
     const callerSocket = onlineUsers.get(to);
-    if (callerSocket) io.to(callerSocket).emit("callEnded", { reason: "Call rejected" });
+    if (callerSocket) {
+      io.to(callerSocket).emit("callEnded", { reason: "Call rejected" });
+    }
   });
 
+  // ICE candidate
   socket.on("iceCandidate", ({ to, candidate }) => {
     const targetSocket = onlineUsers.get(to);
-    if (targetSocket) io.to(targetSocket).emit("iceCandidate", candidate);
+    if (targetSocket) {
+      io.to(targetSocket).emit("iceCandidate", candidate);
+    }
   });
 
+  // End call
   socket.on("endCall", ({ to }) => {
     const targetSocket = onlineUsers.get(to);
-    if (targetSocket) io.to(targetSocket).emit("callEnded");
+    if (targetSocket) {
+      io.to(targetSocket).emit("callEnded");
+    }
   });
 
+  // Handle user disconnection
   socket.on("disconnect", () => {
     for (const [userId, sockId] of onlineUsers.entries()) {
-      if (sockId === socket.id) onlineUsers.delete(userId);
+      if (sockId === socket.id) {
+        onlineUsers.delete(userId);
+        // Notify other users that this user went offline
+        socket.broadcast.emit("userOffline", userId);
+        break;
+      }
     }
     console.log("Socket disconnected:", socket.id);
   });
 });
 
+// ---------------- Start Server ----------------
+server.listen(5000, () => console.log("Server running on port 5000"));
 // ---------------- Start Server ----------------
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
