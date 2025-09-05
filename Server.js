@@ -206,30 +206,34 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Call user
-  socket.on("callUser", ({ to, from, signalData, name, callType }) => {
-    const calleeSocket = onlineUsers.get(to);
-    if (calleeSocket) {
-      io.to(calleeSocket).emit("incomingCall", { 
-        from, 
-        signalData, 
-        name, 
-        callType, 
-        online: true 
-      });
-    } else {
-      // Notify caller that callee is offline
-      socket.emit("calleeOffline", { to, name, callType });
-    }
-  });
+ // Call user
+socket.on("callUser", ({ to, from, signalData, name, callType }) => {
+  console.log(`Call from ${from} to ${to}, type: ${callType}`);
+  const calleeSocket = onlineUsers.get(to);
+  if (calleeSocket) {
+    io.to(calleeSocket).emit("incomingCall", { 
+      from, 
+      signalData, 
+      name, 
+      callType, 
+      online: true 
+    });
+  } else {
+    // Notify caller that callee is offline
+    socket.emit("calleeOffline", { to, name, callType });
+  }
+});
 
-  // Answer call
-  socket.on("answerCall", ({ to, signalData }) => {
-    const callerSocket = onlineUsers.get(to);
-    if (callerSocket) {
-      io.to(callerSocket).emit("callAccepted", { signalData });
-    }
-  });
+// Answer call - make sure to send the answer to the right caller
+socket.on("answerCall", ({ to, signalData }) => {
+  console.log(`Answer from ${socket.id} to ${to}`);
+  const callerSocket = onlineUsers.get(to);
+  if (callerSocket) {
+    io.to(callerSocket).emit("callAccepted", { signalData });
+  }
+});
+
+
 
   // Reject call
   socket.on("rejectCall", ({ to }) => {
@@ -239,14 +243,14 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ICE candidate
-  socket.on("iceCandidate", ({ to, candidate }) => {
-    const targetSocket = onlineUsers.get(to);
-    if (targetSocket) {
-      io.to(targetSocket).emit("iceCandidate", candidate);
-    }
-  });
-
+// ICE candidate - make sure to route to the right peer
+socket.on("iceCandidate", ({ to, candidate }) => {
+  console.log(`ICE candidate from ${socket.id} to ${to}`);
+  const targetSocket = onlineUsers.get(to);
+  if (targetSocket) {
+    io.to(targetSocket).emit("iceCandidate", candidate);
+  }
+});
   // End call
   socket.on("endCall", ({ to }) => {
     const targetSocket = onlineUsers.get(to);
