@@ -73,6 +73,33 @@ app.get("/contacts/:userId", async (req, res) => {
   res.json(user?.contacts || []);
 });
 
+app.get("/contacts-with-last/:userId", async (req, res) => {
+  const { userId } = req.params;
+  const user = await User.findById(userId).populate("contacts", "name avatar number");
+
+  const data = await Promise.all(user.contacts.map(async (c) => {
+    const lastMsg = await Message.findOne({
+      $or: [
+        { sender: userId, receiver: c._id },
+        { sender: c._id, receiver: userId }
+      ]
+    }).sort({ createdAt: -1 });
+    return { contact: c, lastMessage: lastMsg };
+  }));
+
+  res.json(data);
+});
+
+app.get("/search/:userId/:query", async (req, res) => {
+  const { userId, query } = req.params;
+  const user = await User.findById(userId);
+  const contacts = await User.find({
+    _id: { $ne: userId, $nin: user.contacts },
+    number: { $regex: query, $options: "i" },
+  });
+  res.json(contacts);
+});
+
 app.post("/friends/:userId/:friendId", async (req, res) => {
   const user = await User.findById(req.params.userId);
   if (!user.contacts.includes(req.params.friendId)) {
