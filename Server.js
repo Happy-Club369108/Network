@@ -45,7 +45,7 @@ app.post("/signup", async (req, res) => {
 
     const hash = await bcrypt.hash(password, 10);
     const newUser = await new User({ number, name, password: hash }).save();
-    res.json({ userid: newUser._id });
+    res.json({ userId: newUser._id });
 });
 
 app.post("/login", async (req, res) => {
@@ -56,7 +56,7 @@ app.post("/login", async (req, res) => {
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ error: "Invalid credentials" });
 
-    res.json({ userid: user._id });
+    res.json({ userId: user._id });
 });
 
 // Chat list
