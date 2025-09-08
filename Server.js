@@ -20,7 +20,7 @@ mongoose.connect(process.env.MONGO_URL)
 
 // Schemas
 const userSchema = new mongoose.Schema({
-    number: { type: Number, unique: true },
+    number: { type: String, unique: true, required:true },
     password: String,
     name: String,
     avatar: String,
