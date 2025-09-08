@@ -6,9 +6,17 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Happy-Club369108/Network.git"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Happy-Club369108/Network/issues"
+  },
+  "homepage": "https://github.com/Happy-Club369108/Network#readme",
   "description": "",
   "dependencies": {
     "bcrypt": "^6.0.0",
